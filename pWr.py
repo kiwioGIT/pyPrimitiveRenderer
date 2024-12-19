@@ -21,6 +21,7 @@ class surface:
 gPoints = []
 gLines = []
 gFaces = []
+gNormals = []
 gCam = camC()
 gScreen = surface()
 gScreen.width = 70
@@ -31,7 +32,7 @@ gScreen.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
 def intify(v):
     return np.array([int(v[0]), int(v[1]), int(v[2])])
 
-def loadObj(path, points, lines, faces): ## nacete wavefront .obj soubor
+def loadObj(path, points, lines, faces, normals): ## nacete wavefront .obj soubor
     points[:] = []
     lines[:] = []
     objFile = open(path, "r")
@@ -42,12 +43,14 @@ def loadObj(path, points, lines, faces): ## nacete wavefront .obj soubor
             points.append(np.array([float(tlData[1]),float(tlData[2]),float(tlData[3])]))
         if textLine[0] == "f": # pokud radek zacina na "f" cili Face znaci Stenu, a nasleduji obvykle 3 nebo i vice indexy bodu ktere stenu tvori, (tento program pocita jen se trema)
             faces.append((int(tlData[1].split("/")[0]) - 1, int(tlData[2].split("/")[0]) - 1, int(tlData[3].split("/")[0]) - 1))
-            lines.append((int(tlData[1].split("/")[0]) - 1, int(tlData[2].split("/")[0]) - 1)) # tento program ale neumi kreslit steny a misto toho nakresli 3 cary
-            lines.append((int(tlData[2].split("/")[0]) - 1, int(tlData[3].split("/")[0]) - 1))
-            lines.append((int(tlData[3].split("/")[0]) - 1, int(tlData[1].split("/")[0]) - 1))
+            #lines.append((int(tlData[1].split("/")[0]) - 1, int(tlData[2].split("/")[0]) - 1)) # tento program ale neumi kreslit steny a misto toho nakresli 3 cary
+            #lines.append((int(tlData[2].split("/")[0]) - 1, int(tlData[3].split("/")[0]) - 1))
+            #lines.append((int(tlData[3].split("/")[0]) - 1, int(tlData[1].split("/")[0]) - 1))
         if textLine[0] == "l":
             lines.append((int(tlData[1]) - 1, int(tlData[2]) - 1))
-    
+        
+
+
 def hRotated( v, sine, cosine): ## Vraci vektor v otoceny kolem svisle osy o uhel predpocitany do sine a cosine
     nV = v.copy()
     nV[0] = cosine * v[0] - sine * v[2]
