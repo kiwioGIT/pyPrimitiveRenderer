@@ -20,14 +20,15 @@ class surface:
 ## Globalni promenne
 gPoints = []
 gLines = []
+gFaces = []
 gCam = camC()
 gScreen = surface()
 gScreen.width = 70
-gScreen.heigth = 40
+gScreen.heigth = 30
 gScreen.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
 ##
 
-def loadObj(path, points, lines): ## nacete wavefront .obj soubor
+def loadObj(path, points, lines, faces): ## nacete wavefront .obj soubor
     points[:] = []
     lines[:] = []
     objFile = open(path, "r")
@@ -37,6 +38,7 @@ def loadObj(path, points, lines): ## nacete wavefront .obj soubor
         if textLine[0] == "v": # pokud radek zacina n "v" tak to znaci Vertex neboli Bod a nasleduji tri cisla ktera rikaji jeho pozici v prostoru
             points.append(np.array([float(tlData[1]),float(tlData[2]),float(tlData[3])]))
         if textLine[0] == "f": # pokud radek zacina na "f" cili Face znaci Stenu, a nasleduji obvykle 3 nebo i vice indexy bodu ktere stenu tvori, (tento program pocita jen se trema)
+            #faces.append((int(tlData[1].split("/")[0]) - 1, int(tlData[2].split("/")[0]) - 1, int(tlData[3].split("/")[0]) - 1))
             lines.append((int(tlData[1].split("/")[0]) - 1, int(tlData[2].split("/")[0]) - 1)) # tento program ale neumi kreslit steny a misto toho nakresli 3 cary
             lines.append((int(tlData[2].split("/")[0]) - 1, int(tlData[3].split("/")[0]) - 1))
             lines.append((int(tlData[3].split("/")[0]) - 1, int(tlData[1].split("/")[0]) - 1))
@@ -99,40 +101,49 @@ def drawLine(p1,p2,screen): ## jednoduchy algorytmus na kresleni car
         for i in range(0,int(dy),int(math.copysign(1,dy))):
             put((int(p1[0] + i * slope), int( p1[1] + i)), 1, screen)
 
-def drawHzLine(p1, p2, screen):
+def drawHzLine(p1, p2, val, screen):
     if p1[0] < p2[0]:
-        for i in range(p2[0] - p1[0]):
-            put(p1 + np.array([i,0,0]), 1, screen)
+        for i in range(p2[0] - p1[0] + 1):
+            put(p1 + np.array([i,0,0]), val, screen)
     else:
-        for i in range(p2[0] - p1[0]):
-            put(p1 + np.array([i,0,0]), 1, screen)
+        for i in range(p1[0] - p2[0] + 1):
+            put(p1 + np.array([-i,0,0]), val, screen)
 
-def fillFlatTriangle(v1, v2, v3, screen): ## assumes vertix order
+def fillFlatTriangle(v1, v2, v3, val, screen): ## assumes vertix order
     slope1 = (v2[0] - v1[0]) / (v2[1] - v1[1])
     slope2 = (v3[0] - v1[0]) / (v3[1] - v1[1])
 
     x1 = v1[0]
     x2 = v1[0]
     for yLine in range(v1[1], v2[1] + 1):
-        drawHzLine(np.array([int(x1), yLine,0]), np.array([int(x2), yLine,0]), screen)
+        drawHzLine(np.array([int(x1), yLine,0]), np.array([int(x2), yLine,0]), val, screen)
         x1 += slope1
         x2 += slope2
 
-def fillReverseFlatTriangle(v1, v2, v3, screen): ## assumes vertix order
+def fillReverseFlatTriangle(v1, v2, v3, val, screen): ## assumes vertix order
     slope1 = (v3[0] - v1[0]) / (v3[1] - v1[1])
     slope2 = (v3[0] - v2[0]) / (v3[1] - v2[1])
 
     x1 = v3[0]
     x2 = v3[0]
     for yLine in range(v3[1], v1[1], -1):
-        drawHzLine(np.array([int(x1), yLine,0]), np.array([int(x2), yLine,0]), screen)
+        drawHzLine(np.array([int(x1), yLine,0]), np.array([int(x2), yLine,0]), val, screen)
         x1 -= slope1
         x2 -= slope2
 
 
 
-def fillTriangle(p1, p2, p3, value, sceen):
-    pass
+def fillTriangle(p1, p2, p3, val, screen):
+    ps = sorted([p1,p2,p3], key= lambda point:point[1])
+    if ps[1][1] == ps[2][1]:
+        fillFlatTriangle(ps[0],ps[1],ps[2], val, screen)
+    elif ps[0][1] == ps[1][1]:
+        fillReverseFlatTriangle(ps[0], ps[1], ps[2], val, screen)
+    else:
+        x4 = ps[0][0] + ((ps[1][1] - ps[0][1]) / (ps[2][1] - ps[0][1])) * (ps[2][0] - ps[0][0])
+        fillFlatTriangle(ps[0],ps[1],np.array([x4,ps[1][1],0]), val, screen)
+        fillReverseFlatTriangle(ps[1], np.array([x4,ps[1][1],0]), ps[2], val, screen)
+    
 
 
 
@@ -144,13 +155,19 @@ def drawLines(points, lines, screen): ## Vykresli vsecky cary
         drawLine(projectedPoints[line[0]] + [screen.width // 2, screen.heigth // 2 , 0], projectedPoints[line[1]] + [screen.width // 2, screen.heigth // 2 , 0], screen)
 
 
+def drawFaces(points, faces, screen):
+    projectedPoints = [project(point,gCam) for point in points]
+    sOffset = [screen.width // 2, screen.heigth // 2 , 0]
+    for face in faces:
+        if projectedPoints[face[0]][2] < 0 or projectedPoints[face[1]][2] < 0 or projectedPoints[face[2]][2] < 0:
+            continue
+        fillTriangle(projectedPoints[face[0]] + sOffset,projectedPoints[face[1]] + sOffset, projectedPoints[face[2]] + sOffset, 1, screen)
 
-fillFlatTriangle(np.array([10,5,0]),np.array([0, 15,0]),np.array([20,15,0]),gScreen)
-drawScreen(gScreen)
 
-"""
+
 while True: ## hlavni smycka
     clear(gScreen)
+    ##drawFaces(gPoints, gFaces, gScreen)
     drawLines(gPoints, gLines, gScreen)
     drawScreen(gScreen)
     if kb.is_pressed("escape"):
@@ -202,4 +219,3 @@ while True: ## hlavni smycka
     
     moveVec = hRotated(moveVec,gCam.hCos,gCam.hSin)
     gCam.pos = gCam.pos + moveVec
-"""
