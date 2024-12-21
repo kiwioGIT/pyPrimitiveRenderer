@@ -17,37 +17,52 @@ class surface:
     data = np.array([])
     width, heigth = 0,0
 
+def normalized(v):
+    norm = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    if norm == 0: 
+       return v
+    return v / norm
+
 ## Globalni promenne
 gPoints = []
 gLines = []
 gFaces = []
 gNormals = []
+gZbuffer = surface()
 gCam = camC()
 gScreen = surface()
 gScreen.width = 70
-gScreen.heigth = 30
+gScreen.heigth = 32
 gScreen.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
+gZbuffer.width = gScreen.width
+gZbuffer.heigth = gScreen.heigth
+gZbuffer.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
+gLight = normalized(np.array([0.7,0.2,-1]))
 ##
 
 def intify(v):
     return np.array([int(v[0]), int(v[1]), int(v[2])])
 
+def dot(v1, v2):
+    return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]
+
+
 def loadObj(path, points, lines, faces, normals): ## nacete wavefront .obj soubor
     points[:] = []
     lines[:] = []
+    faces[:] = []
+    normals[:] = []
     objFile = open(path, "r")
-    ## pokusim se to nejak popsat strukturu .obj souboru
     for textLine in objFile: # .obj soubory jsou rozdelene radkama
         tlData = textLine.split(" ")
         if textLine[0] == "v": # pokud radek zacina n "v" tak to znaci Vertex neboli Bod a nasleduji tri cisla ktera rikaji jeho pozici v prostoru
             points.append(np.array([float(tlData[1]),float(tlData[2]),float(tlData[3])]))
         if textLine[0] == "f": # pokud radek zacina na "f" cili Face znaci Stenu, a nasleduji obvykle 3 nebo i vice indexy bodu ktere stenu tvori, (tento program pocita jen se trema)
             faces.append((int(tlData[1].split("/")[0]) - 1, int(tlData[2].split("/")[0]) - 1, int(tlData[3].split("/")[0]) - 1))
-            #lines.append((int(tlData[1].split("/")[0]) - 1, int(tlData[2].split("/")[0]) - 1)) # tento program ale neumi kreslit steny a misto toho nakresli 3 cary
-            #lines.append((int(tlData[2].split("/")[0]) - 1, int(tlData[3].split("/")[0]) - 1))
-            #lines.append((int(tlData[3].split("/")[0]) - 1, int(tlData[1].split("/")[0]) - 1))
         if textLine[0] == "l":
             lines.append((int(tlData[1]) - 1, int(tlData[2]) - 1))
+    for face in faces:
+        normals.append(normalized(np.cross(points[face[1]] - points[face[0]], points[face[0]] - points[face[2]])))
         
 
 
@@ -65,16 +80,10 @@ def vRotated( v, sine, cosine):## Vraci vektor v otoceny kolem horizontalni osy 
 
 def drawScreen(screen):
     os.system('cls' if os.name == 'nt' else 'clear')
+    scale = " .:-=+*#%@"
+    #scale = " 123456789AB"
     for c in range(screen.heigth * screen.width):
-        "██"
-        if screen.data[c] == 1:
-            print("##",end="")
-        elif screen.data[c] == 2:
-            print("██", end = "")
-        elif screen.data[c] == 3:
-            print("##", end = "")
-        else:
-            print("  ",end="")
+        print(scale[int(screen.data[c])] + scale[int(screen.data[c])],end="")
         if (c+1)%screen.width == 0:
             print("X")
 
@@ -85,6 +94,14 @@ def put(org, val, screen): ## nastavi v bod na pozici pos v poli screen na hodno
     if pos[1] >= screen.heigth or pos[1] < 0:
         return
     screen.data[pos[1] * screen.width + pos[0]] = val
+
+def get(org, screen):
+    pos = intify(org)
+    if pos[0] >= screen.width or pos[0] < 0:
+        return 0
+    if pos[1] >= screen.heigth or pos[1] < 0:
+        return 0
+    return screen.data[pos[1] * screen.width + pos[0]]
 
 def project(origin, cam):## prepocita kde by se mel vektor origin nachazed na obrazovce kamery cam
     nOrigin = origin - cam.pos # protoze zbytek funkce predpoklada ze kamera je v pocatku tak musime vektor posunout
@@ -115,51 +132,54 @@ def drawLine(p1,p2, val,screen): ## jednoduchy algorytmus na kresleni car
         for i in range(0,int(dy),int(math.copysign(1,dy))):
             put((int(p1[0] + i * slope), int( p1[1] + i)), val, screen)
 
-def drawHzLine(p1, p2, val, screen):
+def drawHzLine(p1, p2, val, z, screen ,zBuffer):
     if p1[0] < p2[0]:
         for i in range(p2[0] - p1[0] + 1):
-            put(p1 + np.array([i,0,0]), val, screen)
+            if get(p1 + np.array([i,0,0]), zBuffer) > z: 
+                put(p1 + np.array([i,0,0]), val, screen)
+                put(p1 + np.array([i,0,0]), z, zBuffer)
     else:
         for i in range(p1[0] - p2[0] + 1):
-            put(p1 + np.array([-i,0,0]), val, screen)
+            if get(p1 + np.array([-i,0,0]), zBuffer) > z: 
+                put(p1 + np.array([-i,0,0]), val, screen)
+                put(p1 + np.array([-i,0,0]), z, zBuffer)
 
-def fillFlatTriangle(v1, v2, v3, val, screen): ## assumes vertix order
+def fillFlatTriangle(v1, v2, v3, val, z , screen, zBuffer): ## assumes vertix order
     slope1 = (v2[0] - v1[0]) / (v2[1] - v1[1])
     slope2 = (v3[0] - v1[0]) / (v3[1] - v1[1])
 
     x1 = v1[0]
     x2 = v1[0]
     for yLine in range(int(v1[1]), int(v2[1])):
-        drawHzLine(np.array([int(x1), yLine + 1,0]), np.array([int(x2), yLine + 1,0]), val, screen)
+        drawHzLine(np.array([int(x1), yLine + 1,0]), np.array([int(x2), yLine + 1,0]), val, z, screen, zBuffer)
         x1 += slope1
         x2 += slope2
 
-def fillReverseFlatTriangle(v1, v2, v3, val, screen): ## assumes vertix order
+def fillReverseFlatTriangle(v1, v2, v3, val, z, screen, zBuffer): ## assumes vertix order
     slope1 = (v3[0] - v1[0]) / (v3[1] - v1[1])
     slope2 = (v3[0] - v2[0]) / (v3[1] - v2[1])
 
     x1 = v3[0]
     x2 = v3[0]
     for yLine in range(int(v3[1]), int(v1[1]), -1):
-        drawHzLine(np.array([int(x1), yLine,0]), np.array([int(x2), yLine,0]), val, screen)
+        drawHzLine(np.array([int(x1), yLine,0]), np.array([int(x2), yLine,0]), val, z, screen, zBuffer)
         x1 -= slope1
         x2 -= slope2
 
 
 
-def fillTriangle(p1, p2, p3, val, screen):
+def fillTriangle(p1, p2, p3, val, screen, zBuffer):
+    z = (p1[2] + p2[2] + p3[2]) / 3.0
     ps = sorted([p1,p2,p3], key= lambda point:point[1])
     if ps[1][1] == ps[2][1]:
-        fillFlatTriangle(ps[0],ps[1],ps[2], val, screen)
+        fillFlatTriangle(ps[0],ps[1],ps[2], val, z, screen, zBuffer)
     elif ps[0][1] == ps[1][1]:
-        fillReverseFlatTriangle(ps[0], ps[1], ps[2], val, screen)
+        fillReverseFlatTriangle(ps[0],ps[1],ps[2], val, z, screen, zBuffer)
     else:
         x4 = ps[0][0] + int(((ps[1][1] - ps[0][1]) / (ps[2][1] - ps[0][1])) * (ps[2][0] - ps[0][0]))
-        fillFlatTriangle(ps[0],ps[1],np.array([x4,ps[1][1],0]), val, screen)
-        fillReverseFlatTriangle(ps[1], np.array([x4,ps[1][1],0]), ps[2], val, screen)
+        fillFlatTriangle(ps[0],ps[1],np.array([x4,ps[1][1],0]), val, z, screen, zBuffer)
+        fillReverseFlatTriangle(ps[1], np.array([x4,ps[1][1],0]), ps[2], val, z, screen, zBuffer)
     
-
-
 
 def drawLines(points, lines, screen): ## Vykresli vsecky cary
     projectedPoints = [intify(project(point,gCam)) for point in points]
@@ -169,24 +189,26 @@ def drawLines(points, lines, screen): ## Vykresli vsecky cary
         drawLine(projectedPoints[line[0]] + [screen.width // 2, screen.heigth // 2 , 0], projectedPoints[line[1]] + [screen.width // 2, screen.heigth // 2 , 0], 1, screen)
 
 
-def drawFaces(points, faces, screen):
+def drawFaces(points, faces, normals, light, charLen, screen, zBuffer):
     projectedPoints = [project(point,gCam) for point in points]
     sOffset = [screen.width // 2, screen.heigth // 2 , 0]
-    for face in faces:
+    for f in range(len(faces)):
+        face = faces[f]
         if projectedPoints[face[0]][2] < 0 or projectedPoints[face[1]][2] < 0 or projectedPoints[face[2]][2] < 0:
             continue
-        fillTriangle(projectedPoints[face[0]] + sOffset,projectedPoints[face[1]] + sOffset, projectedPoints[face[2]] + sOffset, 3, screen)
+        d = np.dot(normals[f], light)
+        fillValue = max(1,int(d * charLen) + 1)
+        fillTriangle(projectedPoints[face[0]] + sOffset,projectedPoints[face[1]] + sOffset, projectedPoints[face[2]] + sOffset, fillValue, screen, zBuffer)
 
-
+loadObj("zidle.obj",gPoints,gLines,gFaces,gNormals)
 
 while True: ## hlavni smycka
     clear(gScreen)
-    drawFaces(gPoints, gFaces, gScreen)
+    gZbuffer.data = [999 for i in range(gZbuffer.width * gZbuffer.heigth)]
+    drawFaces(gPoints, gFaces, gNormals, gLight ,8, gScreen, gZbuffer)
     #drawLines(gPoints, gLines, gScreen)
     projectedPoints = [project(point,gCam) for point in gPoints]
-    sOffset = [gScreen.width // 2, gScreen.heigth // 2 , 0]
-    for p in projectedPoints:
-        put(np.array([int(p[0]), int(p[1]), int(p[2])]) + sOffset, 2, gScreen)
+    #sOffset = [gScreen.width // 2, gScreen.heigth // 2 , 0]
     drawScreen(gScreen)
     if kb.is_pressed("escape"):
         inp = input(">>")
@@ -194,15 +216,14 @@ while True: ## hlavni smycka
             break
         if inp[:4] == "load":
             ln = inp.split()
-            try:
-                loadObj(ln[1], gPoints, gLines, gFaces)
-            except:
-                print("something went wrong")
+            loadObj(ln[1], gPoints, gLines, gFaces, gNormals)
         if inp[:4] == "setw":
             ln = inp.split()
             try:
                 gScreen.width = int(ln[1])
                 gScreen.heigth = int(ln[2])
+                gZbuffer.width = int(ln[1])
+                gZbuffer.heigth = int(ln[2])
                 gCam.nearZ = int(ln[1]) // 2
                 gScreen.data = []
             except:
