@@ -4,31 +4,20 @@ import math
 import keyboard as kb
 
 class camC:
-    pos = np.array([1.0,-0.5,-5.0])
-    vRot, hRot, vSin, vCos, hSin, hCos = 0,0,0,1,0,1
-    nearZ = 35
+    pos = None
+    vRot, hRot, vSin, vCos, hSin, hCos = None, None, None, None, None, None
+    nearZ = None
 
 class surface:
-    data = np.array([])
-    width, heigth = 0,0
+    data = None
+    width, heigth = None, None
 
-def normalized(v):
+def normalized(v): #Normalizuje vektor na delku 1
     norm = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
     if norm == 0: 
        return v
     return v / norm
 
-## Globalni promenne
-gPoints, gFaces, gNormals = [], [], []
-gCam = camC()
-gScreen, gZbuffer = surface(), surface()
-gScreen.width, gScreen.heigth = 70, 32
-gScreen.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
-gZbuffer.width, gZbuffer.heigth = gScreen.width, gScreen.heigth
-gZbuffer.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
-gLight = normalized(np.array([0.7,0.2,-1]))
-gSpeed = 1.0
-##
 def intify(v):
     return np.array([int(v[0]), int(v[1]), int(v[2])])
 
@@ -72,7 +61,7 @@ def put(org, val, screen): ## nastavi v bod na pozici pos v poli screen na hodno
         return
     screen.data[pos[1] * screen.width + pos[0]] = val
 
-def get(org, screen):
+def get(org, screen): # Podobne jak put ale naopak vrací hodnotu
     pos = intify(org)
     if pos[0] >= screen.width or pos[0] < 0 or pos[1] >= screen.heigth or pos[1] < 0:
         return 0
@@ -95,7 +84,7 @@ def drawHzLine(p1, p2, val, z, screen ,zBuffer):
                 put(p1 + np.array([x,0,0]), val, screen)
                 put(p1 + np.array([x,0,0]), z, zBuffer)
 
-def fillFlatTriangle(v1, v2, v3, val, z , screen, zBuffer): ## assumes vertix order
+def fillFlatTriangle(v1, v2, v3, val, z , screen, zBuffer): ## assumes vertix order, spodní strana trojuhelníku je horizontální
     slope1 = (v2[0] - v1[0]) / (v2[1] - v1[1])
     slope2 = (v3[0] - v1[0]) / (v3[1] - v1[1])
 
@@ -106,7 +95,7 @@ def fillFlatTriangle(v1, v2, v3, val, z , screen, zBuffer): ## assumes vertix or
         x1 += slope1
         x2 += slope2
 
-def fillReverseFlatTriangle(v1, v2, v3, val, z, screen, zBuffer): ## assumes vertix order
+def fillReverseFlatTriangle(v1, v2, v3, val, z, screen, zBuffer): ## assumes vertix order, horní strana trojuhelníku je horizontální
     slope1 = (v3[0] - v1[0]) / (v3[1] - v1[1])
     slope2 = (v3[0] - v2[0]) / (v3[1] - v2[1])
 
@@ -129,8 +118,8 @@ def fillTriangle(p1, p2, p3, val, screen, zBuffer):
         fillFlatTriangle(ps[0],ps[1],np.array([x4,ps[1][1],0]), val, z, screen, zBuffer)
         fillReverseFlatTriangle(ps[1], np.array([x4,ps[1][1],0]), ps[2], val, z, screen, zBuffer)
     
-def drawFaces(points, faces, normals, light, charLen, screen, zBuffer):
-    projectedPoints = [project(point,gCam) for point in points]
+def drawFaces(points, faces, normals, light, charLen, screen, zBuffer, cam):
+    projectedPoints = [project(point,cam) for point in points]
     sOffset = [screen.width // 2, screen.heigth // 2 , 0]
     for f in range(len(faces)):
         face = faces[f]
@@ -140,61 +129,81 @@ def drawFaces(points, faces, normals, light, charLen, screen, zBuffer):
         fillValue = max(1,int(d * charLen) + 1)
         fillTriangle(projectedPoints[face[0]] + sOffset,projectedPoints[face[1]] + sOffset, projectedPoints[face[2]] + sOffset, fillValue, screen, zBuffer)
 
-while True: ## hlavni smycka
-    gScreen.data[:] = np.zeros(gScreen.width * gScreen.heigth)
-    gZbuffer.data = [999.9 for i in range(gZbuffer.width * gZbuffer.heigth)]
-    drawFaces(gPoints, gFaces, gNormals, gLight ,8, gScreen, gZbuffer)
-    projectedPoints = [project(point,gCam) for point in gPoints]
-    drawScreen(gScreen)
-    if kb.is_pressed("escape"):
-        inp = input(">>>")
-        try:
-            ln = inp.split()
-            if inp == "q" or inp == "quit":
-                break
-            elif inp[:4] == "load":
-                loadObj(ln[1], gPoints, gFaces, gNormals)
-            elif inp[:4] == "setw" or inp[:9] == "setwindow":
-                gScreen.width = int(ln[1])
-                gScreen.heigth = int(ln[2])
-                gZbuffer.width = int(ln[1])
-                gZbuffer.heigth = int(ln[2])
-                gCam.nearZ = int(ln[1]) // 2
-                gScreen.data = []
-            elif inp[:4] == "setl" or inp[:8] == "setlight":
-                gLight = normalized(np.array([int(ln[1]),int(ln[2]),int(ln[3])]))
-            elif inp[:4] == "sets" or inp[:4] == "setspeed":
-                gSpeed = int(ln[1])
-            else:
-                input(ln[0] +" is not a command, any key to continue")
-        except:
-            input("Command Failed, press any key to continue")
-    moveVec = np.array([0.0,0.0,0.0])
-    if kb.is_pressed("a"):
-        moveVec[2] += 0.1 * gSpeed
-    if kb.is_pressed("d"):
-        moveVec[2] -= 0.1 * gSpeed
-    if kb.is_pressed("w"):
-        moveVec[0] += 0.1 * gSpeed
-    if kb.is_pressed("s"):
-        moveVec[0] -= 0.1 * gSpeed
-    if kb.is_pressed("space"):
-        moveVec[1] -= 0.1 * gSpeed
-    if kb.is_pressed("shift"):
-        moveVec[1] += 0.1 * gSpeed
-    if kb.is_pressed("left"):
-        gCam.hRot -= 0.05 * gSpeed
-    if kb.is_pressed("right"):
-        gCam.hRot += 0.05 * gSpeed
-    if kb.is_pressed("up"):
-        gCam.vRot += 0.05 * gSpeed
-    if kb.is_pressed("down"):
-        gCam.vRot -= 0.05 * gSpeed
-    ## Predvypocet sinu a cosinu abych je nemusel pocitat u kazdeho trojuhelniku znova
-    gCam.hSin = math.sin(gCam.hRot)
-    gCam.hCos = math.cos(gCam.hRot)
-    gCam.vSin = math.sin(gCam.vRot)
-    gCam.vCos = math.cos(gCam.vRot)
-    
-    moveVec = hRotated(moveVec,gCam.hCos,gCam.hSin)
-    gCam.pos = gCam.pos + moveVec
+def main():
+    ## promenne
+    gPoints, gFaces, gNormals = [], [], []
+    gCam = camC()
+    gCam.pos = np.array([1.0,-0.5,-5.0])
+    gCam.vRot, gCam.hRot, gCam.vSin, gCam.vCos, gCam.hSin, gCam.hCos = 0,0,0,1,0,1
+    gCam.nearZ = 35
+    gScreen, gZbuffer = surface(), surface()
+    gScreen.width, gScreen.heigth = 70, 32
+    gScreen.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
+    gZbuffer.width, gZbuffer.heigth = gScreen.width, gScreen.heigth
+    gZbuffer.data = np.array([0 for i in range(gScreen.heigth * gScreen.width)])
+    gLight = normalized(np.array([0.7,0.2,-1]))
+    gSpeed = 1.0
+    ##
+
+    while True: ## hlavni smycka
+        ## Vykreslovani
+        gScreen.data[:] = np.zeros(gScreen.width * gScreen.heigth)
+        gZbuffer.data = [999.9 for i in range(gZbuffer.width * gZbuffer.heigth)]
+        drawFaces(gPoints, gFaces, gNormals, gLight ,8, gScreen, gZbuffer, gCam)
+        drawScreen(gScreen)
+        ## Input
+        if kb.is_pressed("escape"):
+            inp = input(">>>")
+            try:
+                ln = inp.split()
+                if inp == "q" or inp == "quit":
+                    break
+                elif inp[:4] == "load":
+                    loadObj(ln[1], gPoints, gFaces, gNormals)
+                elif inp[:4] == "setw" or inp[:9] == "setwindow":
+                    gScreen.width = int(ln[1])
+                    gScreen.heigth = int(ln[2])
+                    gZbuffer.width = int(ln[1])
+                    gZbuffer.heigth = int(ln[2])
+                    gCam.nearZ = int(ln[1]) // 2
+                    gScreen.data = []
+                elif inp[:4] == "setl" or inp[:8] == "setlight":
+                    gLight = normalized(np.array([float(ln[1]),float(ln[2]),float(ln[3])]))
+                elif inp[:4] == "sets" or inp[:4] == "setspeed":
+                    gSpeed = float(ln[1])
+                else:
+                    input(ln[0] +" is not a command, enter to continue")
+            except:
+                input("Command Failed, press enter to continue")
+        moveVec = np.array([0.0,0.0,0.0])
+        if kb.is_pressed("a"):
+            moveVec[2] += 0.1 * gSpeed
+        if kb.is_pressed("d"):
+            moveVec[2] -= 0.1 * gSpeed
+        if kb.is_pressed("w"):
+            moveVec[0] += 0.1 * gSpeed
+        if kb.is_pressed("s"):
+            moveVec[0] -= 0.1 * gSpeed
+        if kb.is_pressed("space"):
+            moveVec[1] -= 0.1 * gSpeed
+        if kb.is_pressed("shift"):
+            moveVec[1] += 0.1 * gSpeed
+        if kb.is_pressed("left"):
+            gCam.hRot -= 0.05 * gSpeed
+        if kb.is_pressed("right"):
+            gCam.hRot += 0.05 * gSpeed
+        if kb.is_pressed("up"):
+            gCam.vRot += 0.05 * gSpeed
+        if kb.is_pressed("down"):
+            gCam.vRot -= 0.05 * gSpeed
+        ## Predvypocet sinu a cosinu abych je nemusel pocitat u kazdeho trojuhelniku znova
+        gCam.hSin = math.sin(gCam.hRot)
+        gCam.hCos = math.cos(gCam.hRot)
+        gCam.vSin = math.sin(gCam.vRot)
+        gCam.vCos = math.cos(gCam.vRot)
+        
+        moveVec = hRotated(moveVec,gCam.hCos,gCam.hSin)
+        gCam.pos = gCam.pos + moveVec
+
+if __name__ == '__main__':
+    main()
